@@ -1,12 +1,29 @@
 import string
+import re
 import joblib
 import sv_ttk
+import spacy
+from scipy.special import expit
+from nltk.corpus import stopwords
 from tkinter import *
 from tkinter import ttk
 
+# -------------------- Load Model -------------------- #
 model = joblib.load("model.pkl")
 vectorizer = joblib.load("vectorizer.pkl")
 
+# -------------------- NLP Setup -------------------- #
+nlp = spacy.load("en_core_web_sm")
+stop_words = set(stopwords.words("english"))
+
+def preprocess(text):
+    text = text.lower()
+    text = re.sub(r"[^\w\s]", "", text)
+    text = re.sub(r"(<br\s*/?>|br\s*/?|/br)", "", text)
+    doc = nlp(text)
+    return " ".join([token.lemma_ for token in doc if token.text not in stop_words])
+
+# -------------------- Prediction Logic -------------------- #
 def predict_news():
     text = text_box.get("1.0", END).strip()
     if not text:
@@ -14,25 +31,26 @@ def predict_news():
         confidence_label.config(text="")
         return
 
-    text = text.lower().translate(str.maketrans("", "", string.punctuation))
-    text_vec = vectorizer.transform([text])
+    processed_text = preprocess(text)
+    text_vec = vectorizer.transform([processed_text])
     prediction = model.predict(text_vec)[0]
 
     try:
-        confidence = model.decision_function(text_vec)[0]
-        confidence = 1 / (1 + pow(2.71828, -confidence))
+        confidence = expit(model.decision_function(text_vec)[0])  # proper sigmoid
     except:
-        confidence = 0.85
+        confidence = 0.85  # fallback if unavailable
 
     if prediction == 1:
         result_label.config(text="📰 Real News", foreground="#00FA9A")
         confidence_label.config(
-            text=f"Confidence: {round(confidence * 100, 2)}%", foreground="#00FA9A"
+            text=f"Confidence: {round(confidence * 100, 2)}%",
+            foreground="#00FA9A"
         )
     else:
         result_label.config(text="⚠️ Fake News", foreground="#F08080")
         confidence_label.config(
-            text=f"Confidence: {round((1 - confidence) * 100, 2)}%", foreground="#F08080"
+            text=f"Confidence: {round((1 - confidence) * 100, 2)}%",
+            foreground="#F08080"
         )
 
 def clear_text():
@@ -40,6 +58,7 @@ def clear_text():
     result_label.config(text="")
     confidence_label.config(text="")
 
+# -------------------- GUI Setup -------------------- #
 window = Tk()
 window.title("Fake News Detector 🧠")
 window.geometry("700x550")
@@ -48,7 +67,6 @@ window.minsize(600, 450)
 # Apply sv dark theme
 sv_ttk.set_theme("dark")
 
-# -------------------- GUI -------------------- #
 frame = ttk.Frame(window, padding=30)
 frame.place(relx=0.5, rely=0.5, anchor="center")
 
